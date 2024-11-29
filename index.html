@@ -4,45 +4,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebRTC Screen Sharing</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
     <h1>WebRTC Screen Sharing</h1>
     <button id="startShare">Start Sharing</button>
     <video id="remoteVideo" autoplay></video>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         const startShare = document.getElementById('startShare');
         const remoteVideo = document.getElementById('remoteVideo');
 
-        // اتصال به سرور سیگنال‌دهی (آدرس سرور خود را وارد کنید)
-        const socket = io('https://your-signaling-server.com'); // آدرس سرور سیگنال‌دهی
+        // اتصال به سرور سیگنال‌دهی (آدرس سرور شما در Vercel)
+        const socket = io('https://online-watch.vercel.app'); // آدرس سرور سیگنال‌دهی
         let peerConnection;
         const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+        // شروع اشتراک‌گذاری صفحه
         startShare.addEventListener('click', async () => {
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            remoteVideo.srcObject = stream;
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                remoteVideo.srcObject = stream;
 
-            peerConnection = new RTCPeerConnection(config);
+                // ایجاد PeerConnection
+                peerConnection = new RTCPeerConnection(config);
 
-            // افزودن استریم به PeerConnection
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+                // افزودن استریم صفحه‌نمایش به PeerConnection
+                stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-            // ارسال ICE Candidateها به سرور
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', event.candidate);
-                }
-            };
+                // مدیریت ICE Candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('ice-candidate', event.candidate);
+                    }
+                };
 
-            // ارسال Offer به سرور
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            socket.emit('offer', offer);
+                // ارسال Offer به سرور
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', offer);
+
+                console.log('Screen sharing started...');
+            } catch (error) {
+                console.error('Error starting screen sharing:', error);
+            }
         });
 
-        // دریافت Offer از سرور
+        // دریافت Offer از سرور و ارسال Answer
         socket.on('offer', async (offer) => {
             peerConnection = new RTCPeerConnection(config);
 
@@ -60,16 +68,24 @@
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             socket.emit('answer', answer);
+
+            console.log('Answer sent to the signaling server.');
         });
 
         // دریافت Answer از سرور
         socket.on('answer', async (answer) => {
             await peerConnection.setRemoteDescription(answer);
+            console.log('Answer received from the signaling server.');
         });
 
-        // دریافت ICE Candidateها از سرور
+        // دریافت ICE Candidates از سرور
         socket.on('ice-candidate', async (candidate) => {
-            await peerConnection.addIceCandidate(candidate);
+            try {
+                await peerConnection.addIceCandidate(candidate);
+                console.log('ICE Candidate added.');
+            } catch (error) {
+                console.error('Error adding ICE Candidate:', error);
+            }
         });
     </script>
 </body>
